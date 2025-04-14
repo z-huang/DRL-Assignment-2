@@ -1,11 +1,17 @@
 import sys
 import numpy as np
-import random
+from game_connect6 import Connect6Env
+from mcts_6 import MCTS, MCTSAgent
+
 
 class Connect6Game:
-    def __init__(self, size=19):
+    def __init__(self, env: Connect6Env, agent: MCTSAgent, size=19):
         self.size = size
-        self.board = np.zeros((size, size), dtype=int)  # 0: Empty, 1: Black, 2: White
+        self.env = env
+        self.env.reset()
+        self.agent = agent
+        # 0: Empty, 1: Black, 2: White
+        self.board = np.zeros((size, size), dtype=int)
         self.turn = 1  # 1: Black, 2: White
         self.game_over = False
 
@@ -14,7 +20,9 @@ class Connect6Game:
         self.board.fill(0)
         self.turn = 1
         self.game_over = False
+        self.env.reset()
         print("= ", flush=True)
+
     def set_board_size(self, size):
         """Sets the board size and resets the game."""
         self.size = size
@@ -22,6 +30,7 @@ class Connect6Game:
         self.turn = 1
         self.game_over = False
         print("= ", flush=True)
+
     def check_win(self):
         """Checks if a player has won.
         Returns:
@@ -94,6 +103,7 @@ class Connect6Game:
 
         for row, col in positions:
             self.board[row, col] = 1 if color.upper() == 'B' else 2
+            self.env.step((row, col))
 
         self.turn = 3 - self.turn
         print('= ', end='', flush=True)
@@ -104,38 +114,44 @@ class Connect6Game:
             print("? Game over")
             return
 
-        empty_positions = [(r, c) for r in range(self.size) for c in range(self.size) if self.board[r, c] == 0]
-        selected = random.sample(empty_positions, 1)
-        move_str = ",".join(f"{self.index_to_label(c)}{r+1}" for r, c in selected)
-        
+        action = self.agent.get_action(self.env)
+        selected = [action]
+
+        move_str = ",".join(
+            f"{self.index_to_label(c)}{r+1}" for r, c in selected)
+
         self.play_move(color, move_str)
 
         print(f"{move_str}\n\n", end='', flush=True)
         print(move_str, file=sys.stderr)
         return
+
     def show_board(self):
         """Displays the board as text."""
         print("= ")
         for row in range(self.size - 1, -1, -1):
-            line = f"{row+1:2} " + " ".join("X" if self.board[row, col] == 1 else "O" if self.board[row, col] == 2 else "." for col in range(self.size))
+            line = f"{row+1:2} " + " ".join(
+                "X" if self.board[row, col] == 1 else "O" if self.board[row, col] == 2 else "." for col in range(self.size))
             print(line)
-        col_labels = "   " + " ".join(self.index_to_label(i) for i in range(self.size))
+        col_labels = "   " + " ".join(self.index_to_label(i)
+                                      for i in range(self.size))
         print(col_labels)
         print(flush=True)
 
     def list_commands(self):
         """Lists all available commands."""
-        print("= ", flush=True)  
+        print("= ", flush=True)
 
     def process_command(self, command):
         """Parses and executes GTP commands."""
         command = command.strip()
+        # print(command)
         if command == "get_conf_str env_board_size:":
             print("env_board_size=19", flush=True)
 
         if not command:
             return
-        
+
         parts = command.split()
         cmd = parts[0].lower()
 
@@ -181,6 +197,16 @@ class Connect6Game:
             except Exception as e:
                 print(f"? Error: {str(e)}")
 
+
 if __name__ == "__main__":
-    game = Connect6Game()
+    game = Connect6Game(
+        env=Connect6Env(),
+        agent=MCTSAgent(
+            mcts=MCTS(
+                c_puct=1.41 * 10,
+                rollout_depth=6
+            ),
+            iterations=80
+        )
+    )
     game.run()
